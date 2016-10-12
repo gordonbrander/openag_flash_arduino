@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+"""
+Flashes Arduino
+"""
+
+import select
+import subprocess
+import shutil
+import tempfile
+
+def handle_process(self, proc, err):
+    """
+    Takes a running subprocess.Popen object `proc`, rosdebugs everything it
+    prints to stdout, roswarns everything it prints to stderr, and raises
+    `err` if it fails
+    """
+    poll = select.poll()
+    poll.register(proc.stdout)
+    poll.register(proc.stderr)
+    while proc.poll() is None:
+        res = poll.poll(1)
+        for fd, evt in res:
+            if not (evt & select.POLLIN):
+                continue
+            if fd == proc.stdout.fileno():
+                line = proc.stdout.readline().strip()
+                if line:
+                    print(line)
+            elif fd == proc.stderr.fileno():
+                line = proc.stderr.readline().strip()
+                if line:
+                    print(line)
+    if proc.poll():
+        proc.terminate()
+        proc.wait()
+        raise RuntimeError("Process interrupted")
+    if proc.returncode:
+        raise err
+
+if __name__ == '__main__':
+    build_dir = tempfile.mkdtemp()
+    print("Initializing firmware project for Arduino")
+    proc = subprocess.Popen(
+        ["openag", "firmware", "init"], cwd=self.build_dir,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    handle_process(proc, RuntimeError(
+        "Failed to initialize OpenAg firmware project"
+    ))
+    print("Updating Arduino")
+    proc = subprocess.Popen(
+        [
+            "openag", "firmware", "run", "-p", "ros", "-t",
+            "upload"
+        ], cwd=build_dir, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    handle_process(proc, Exception())
+    print("Cleaning up...")
+    shutil.rmtree(build_dir)
+    print("Done!")
